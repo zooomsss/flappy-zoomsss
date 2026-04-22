@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+  <html lang="id">
+  <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flappy Bird Sederhana</title>
+  <style>
+    /* === Reset dasar & tata letak halaman === */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      /* Latar gradient cerah ala langit modern */
+      background: linear-gradient(180deg, #4ec0ff 0%, #87e0ff 60%, #ffe27a 100%);
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      overflow: hidden;
+      display: flex; justify-content: center; align-items: center;
+      user-select: none;
+    }
+
+    /* === Wadah game === */
+    #wrap {
+      position: relative;
+      width: 400px; height: 600px;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+    }
+
+    /* === Canvas tempat menggambar === */
+    canvas {
+      display: block;
+      background: linear-gradient(180deg, #6cd0ff 0%, #b8ecff 70%, #f6e27a 100%);
+      width: 100%; height: 100%;
+    }
+
+    /* === Layar overlay (start & game over) === */
+    .overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      color: #fff;
+      text-shadow: 2px 2px 0 rgba(0,0,0,0.35);
+      background: rgba(0,0,0,0.35);
+      backdrop-filter: blur(2px);
+      text-align: center;
+      padding: 20px;
+    }
+    .overlay.hidden { display: none; }
+
+    .overlay h1 {
+      font-size: 42px;
+      margin-bottom: 12px;
+      color: #ffeb3b;
+    }
+    .overlay p { font-size: 18px; margin: 6px 0; }
+    .overlay .score-final {
+      font-size: 32px; font-weight: bold; color: #fff; margin: 14px 0;
+    }
+
+    /* === Tombol === */
+    button {
+      margin-top: 18px;
+      padding: 12px 28px;
+      font-size: 18px;
+      font-weight: bold;
+      color: #fff;
+      background: linear-gradient(180deg, #ff6b6b, #ee0979);
+      border: none;
+      border-radius: 30px;
+      cursor: pointer;
+      box-shadow: 0 6px 0 #b0064d, 0 8px 16px rgba(0,0,0,0.3);
+      transition: transform 0.08s ease;
+    }
+    button:active { transform: translateY(3px); box-shadow: 0 3px 0 #b0064d; }
+
+    /* === Skor di pojok atas === */
+    #score {
+      position: absolute;
+      top: 14px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 38px; font-weight: bold; color: #fff;
+      text-shadow: 2px 2px 0 rgba(0,0,0,0.45);
+      pointer-events: none;
+    }
+  </style>
+  </head>
+  <body>
+
+  <div id="wrap">
+    <!-- Canvas utama tempat semua gambar game ditampilkan -->
+    <canvas id="game" width="400" height="600"></canvas>
+
+    <!-- Skor saat bermain -->
+    <div id="score">0</div>
+
+    <!-- Layar mulai -->
+    <div id="startScreen" class="overlay">
+      <h1>Flappy Bird</h1>
+      <p>Tekan <b>Space</b> atau <b>Klik / Sentuh</b> layar untuk melompat</p>
+      <button id="startBtn">Mulai Bermain</button>
+    </div>
+
+    <!-- Layar game over -->
+    <div id="gameOverScreen" class="overlay hidden">
+      <h1>Game Over</h1>
+      <p>Skor Akhir</p>
+      <div class="score-final" id="finalScore">0</div>
+      <button id="restartBtn">Restart</button>
+    </div>
+  </div>
+
+  <script>
+  /* ============================================================
+     FLAPPY BIRD SEDERHANA - HTML5 Canvas + JavaScript
+     Komentar diberikan tiap blok agar mudah dipelajari pemula.
+     ============================================================ */
+
+  /* ---- 1. Ambil elemen DOM yang akan dipakai ---- */
+  const canvas        = document.getElementById('game');
+  const ctx           = canvas.getContext('2d');
+  const scoreEl       = document.getElementById('score');
+  const startScreen   = document.getElementById('startScreen');
+  const gameOverScreen= document.getElementById('gameOverScreen');
+  const finalScoreEl  = document.getElementById('finalScore');
+  const startBtn      = document.getElementById('startBtn');
+  const restartBtn    = document.getElementById('restartBtn');
+
+  /* ---- 2. Konstanta dasar dunia game ---- */
+  const W = canvas.width;     // lebar canvas
+  const H = canvas.height;    // tinggi canvas
+  const GRAVITY      = 0.45;  // percepatan gravitasi tiap frame
+  const JUMP_POWER   = -8;    // kecepatan vertikal saat melompat (negatif = ke atas)
+  const PIPE_WIDTH   = 60;    // lebar pipa
+  const PIPE_GAP     = 150;   // jarak celah antar pipa atas-bawah
+  const PIPE_INTERVAL= 90;    // jeda frame antara spawn pipa baru
+  const GROUND_H     = 60;    // tinggi tanah
+
+  /* ---- 3. Memuat gambar burung yang dikirim user (di-embed sebagai base64) ---- */
+  const birdImg = new Image();
+  birdImg.src = "data:image/png;base64,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";
+
+  /* ---- 4. Variabel state game (akan direset tiap mulai baru) ---- */
+  let bird, pipes, frame, score, pipeSpeed, running, gameOver;
+
+  /* Fungsi reset/inisialisasi game */
+  function resetGame() {
+    bird = {
+      x: 80,            // posisi horizontal (tetap)
+      y: H / 2,         // posisi vertikal (tengah layar)
+      w: 42, h: 42,     // ukuran sprite burung
+      vy: 0,            // kecepatan vertikal
+      rot: 0            // rotasi (untuk efek nungging)
+    };
+    pipes      = [];    // daftar pipa aktif
+    frame      = 0;     // counter frame
+    score      = 0;     // skor pemain
+    pipeSpeed  = 2.2;   // kecepatan awal pipa bergerak ke kiri
+    running    = false; // apakah game sedang berjalan
+    gameOver   = false; // apakah sudah kalah
+    scoreEl.textContent = '0';
+  }
+
+  /* ---- 5. Fungsi melompat ---- */
+  function flap() {
+    if (gameOver) return;          // saat game over, abaikan
+    if (!running) running = true;  // mulai game saat input pertama
+    bird.vy = JUMP_POWER;          // dorong burung ke atas
+  }
+
+  /* ---- 6. Spawn pipa baru dengan tinggi celah acak ---- */
+  function spawnPipe() {
+    // Hitung area aman agar celah tidak terlalu mepet atas/bawah
+    const minTop = 50;
+    const maxTop = H - GROUND_H - PIPE_GAP - 50;
+    const topHeight = Math.random() * (maxTop - minTop) + minTop;
+    pipes.push({
+      x: W,                        // muncul dari sisi kanan
+      top: topHeight,              // tinggi pipa atas
+      bottom: topHeight + PIPE_GAP,// posisi y mulai pipa bawah
+      passed: false                // apakah sudah dilewati (untuk skor)
+    });
+  }
+
+  /* ---- 7. Deteksi tabrakan kotak (AABB collision) ---- */
+  function collide(bx, by, bw, bh, px, py, pw, ph) {
+    return bx < px + pw && bx + bw > px && by < py + ph && by + bh > py;
+  }
+
+  /* ---- 8. Fungsi update logika tiap frame ---- */
+  function update() {
+    if (!running) return;
+
+    /* --- Gerakan burung dengan gravitasi --- */
+    bird.vy += GRAVITY;
+    bird.y  += bird.vy;
+    // rotasi proporsional dengan kecepatan vertikal (efek visual)
+    bird.rot = Math.max(-0.5, Math.min(1.2, bird.vy / 12));
+
+    /* --- Cek tabrakan dengan tanah / langit --- */
+    if (bird.y + bird.h >= H - GROUND_H || bird.y <= 0) {
+      return endGame();
+    }
+
+    /* --- Spawn pipa secara berkala --- */
+    if (frame % PIPE_INTERVAL === 0) spawnPipe();
+
+    /* --- Update tiap pipa --- */
+    for (let i = pipes.length - 1; i >= 0; i--) {
+      const p = pipes[i];
+      p.x -= pipeSpeed;
+
+      // Cek tabrakan dengan pipa atas & bawah
+      if (
+        collide(bird.x, bird.y, bird.w, bird.h, p.x, 0, PIPE_WIDTH, p.top) ||
+        collide(bird.x, bird.y, bird.w, bird.h, p.x, p.bottom, PIPE_WIDTH, H - p.bottom - GROUND_H)
+      ) {
+        return endGame();
+      }
+
+      // Tambah skor saat burung melewati pipa
+      if (!p.passed && p.x + PIPE_WIDTH < bird.x) {
+        p.passed = true;
+        score++;
+        scoreEl.textContent = score;
+        // Tingkatkan kecepatan pipa secara perlahan tiap 5 skor
+        if (score % 5 === 0) pipeSpeed += 0.25;
+      }
+
+      // Hapus pipa yang sudah keluar layar
+      if (p.x + PIPE_WIDTH < 0) pipes.splice(i, 1);
+    }
+
+    frame++;
+  }
+
+  /* ---- 9. Fungsi menggambar tiap frame ---- */
+  function draw() {
+    /* --- Bersihkan canvas dengan latar langit --- */
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#6cd0ff');
+    sky.addColorStop(0.7, '#b8ecff');
+    sky.addColorStop(1, '#f6e27a');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    /* --- Awan dekoratif sederhana --- */
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    for (let i = 0; i < 3; i++) {
+      const cx = ((frame * 0.3) + i * 160) % (W + 100) - 50;
+      ctx.beginPath();
+      ctx.arc(cx, 80 + i * 40, 22, 0, Math.PI * 2);
+      ctx.arc(cx + 22, 78 + i * 40, 28, 0, Math.PI * 2);
+      ctx.arc(cx + 50, 84 + i * 40, 20, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    /* --- Gambar pipa dengan warna cerah --- */
+    for (const p of pipes) {
+      const grad = ctx.createLinearGradient(p.x, 0, p.x + PIPE_WIDTH, 0);
+      grad.addColorStop(0, '#2ecc71');
+      grad.addColorStop(0.5, '#27ae60');
+      grad.addColorStop(1, '#145a32');
+      ctx.fillStyle = grad;
+
+      // Pipa atas
+      ctx.fillRect(p.x, 0, PIPE_WIDTH, p.top);
+      // Pipa bawah
+      ctx.fillRect(p.x, p.bottom, PIPE_WIDTH, H - p.bottom - GROUND_H);
+
+      // Tutup pipa (atas)
+      ctx.fillStyle = '#1e8449';
+      ctx.fillRect(p.x - 4, p.top - 18, PIPE_WIDTH + 8, 18);
+      ctx.fillRect(p.x - 4, p.bottom, PIPE_WIDTH + 8, 18);
+    }
+
+    /* --- Gambar tanah --- */
+    ctx.fillStyle = '#deb887';
+    ctx.fillRect(0, H - GROUND_H, W, GROUND_H);
+    ctx.fillStyle = '#8b5a2b';
+    ctx.fillRect(0, H - GROUND_H, W, 8);
+    // motif rumput sederhana
+    ctx.fillStyle = '#6abf4b';
+    ctx.fillRect(0, H - GROUND_H - 6, W, 6);
+
+    /* --- Gambar burung dengan rotasi --- */
+    ctx.save();
+    ctx.translate(bird.x + bird.w / 2, bird.y + bird.h / 2);
+    ctx.rotate(bird.rot);
+    if (birdImg.complete && birdImg.naturalWidth > 0) {
+      ctx.drawImage(birdImg, -bird.w / 2, -bird.h / 2, bird.w, bird.h);
+    } else {
+      // Fallback bila gambar belum siap: lingkaran kuning
+      ctx.fillStyle = '#ffeb3b';
+      ctx.beginPath();
+      ctx.arc(0, 0, bird.w / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /* ---- 10. Game loop utama (60 fps) ---- */
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  /* ---- 11. Akhiri game ---- */
+  function endGame() {
+    running  = false;
+    gameOver = true;
+    finalScoreEl.textContent = score;
+    gameOverScreen.classList.remove('hidden');
+  }
+
+  /* ---- 12. Mulai / restart game ---- */
+  function startGame() {
+    resetGame();
+    startScreen.classList.add('hidden');
+    gameOverScreen.classList.add('hidden');
+    running = true;
+  }
+
+  /* ---- 13. Event listener: keyboard, klik, sentuh ---- */
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (gameOver)            startGame();
+      else if (!running)       startGame();
+      flap();
+    }
+  });
+
+  canvas.addEventListener('mousedown',  flap);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); flap(); }, { passive: false });
+
+  startBtn.addEventListener('click', startGame);
+  restartBtn.addEventListener('click', startGame);
+
+  /* ---- 14. Inisialisasi & jalankan loop ---- */
+  resetGame();
+  loop();
+  </script>
+  </body>
+  </html>
+  
